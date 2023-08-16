@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 from scipy import ndimage
 from skimage import measure
-import multiprocessing
 import numpy as np
 import random
 import time

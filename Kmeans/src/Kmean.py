@@ -1,10 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import random
-
-# read image
-path = "Pic/Lena_256bmp.bmp"
-image = plt.imread(path)
+import time
 
 def Kmean(image, K, l1, l2, iter):
     M, N, O = image.shape
@@ -34,12 +31,8 @@ def Kmean(image, K, l1, l2, iter):
         regions[np.argmin(distances)]["index"].append((m, n))
 
     def new_center():
-        new_m = 0
-        new_n = 0
-        new_y = 0
-        new_cr = 0
-        new_cb = 0
         for k in regions:
+            new_m, new_n, new_y, new_cr, new_cb = 0, 0, 0, 0, 0
             for m, n in regions[k]["index"]:
                 new_m += m
                 new_n += n
@@ -67,7 +60,8 @@ def Kmean(image, K, l1, l2, iter):
         regions[k] = {"y": y[K_points[k]], "cb": cb[K_points[k]], "cr": cr[K_points[k]], "index": [K_points[k]]}
         
     # sub main
-    for i in range(iter):    
+    for i in range(iter): 
+        print(f"iter: {i}")   
         for m in range(M):
             for n in range(N):
                 calculate_distance(m, n, regions)
@@ -75,6 +69,7 @@ def Kmean(image, K, l1, l2, iter):
             break
         else:
             new_center()
+
         # print(regions)    
     regions_map()
 
@@ -102,9 +97,17 @@ def show_segamented_image(image, region, l):
         ax[i][j].imshow(temp)
         i += 1
 
+# read image
+path = "Pic/Lena_256bmp.bmp"
+# path = "Pic/peppers.bmp"
+image = plt.imread(path)
+
 # main function
-R, regions = Kmean(image, 16, 0.6, 0.8, 15)
+start = time.time()
+R, regions = Kmean(image, 16, 0.6, 0.8, 10)
 r = show_region(regions)
+end = time.time()
+print(f"time: {end- start}")
 
 show_segamented_image(image, regions, r[0:16])
 plt.show()
