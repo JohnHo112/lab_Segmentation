@@ -1,8 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy import ndimage
 
-def map_regions(regions, M, N):
+def regions_to_R(regions, M, N):
     R = np.zeros((M, N), dtype=int)
     for r, points in regions.items():
         for point in points:
@@ -11,13 +10,15 @@ def map_regions(regions, M, N):
 
 def sort_region(region):
     a = []
+    r = []
     for i in region:
         a.append((len(region[i]), i))
     a = sorted(a, reverse=True)
     sorted_region = {}
     for l, i in a:
         sorted_region[i] = region[i]
-    return sorted_region
+        r.append(i)
+    return sorted_region, r
 
 def show_segamented_image(image, region, l):
     fig, ax = plt.subplots(4, 4)
@@ -33,22 +34,115 @@ def show_segamented_image(image, region, l):
         ax[i][j].imshow(temp)
         i += 1
 
-def show_region(region):
-    r = []
-    for i in region:
-        r.append(i)
-    return r
-
 def RGB_to_ycbcr(image):
     W = np.array([[0.299, 0.587, 0.114], [-0.169, -0.331, 0.5], [0.5, -0.419, -0.081]])
     y = W[0][0]*image[:, :, 0]+W[0][1]*image[:, :, 1]+W[0][2]*image[:, :, 2]
     cb = W[1][0]*image[:, :, 0]+W[1][1]*image[:, :, 1]+W[1][2]*image[:, :, 2]
     cr = W[2][0]*image[:, :, 0]+W[2][1]*image[:, :, 1]+W[2][2]*image[:, :, 2]
-    return y, cb, cr
+    ycbcr = {"y": y, "cb": cb, "cr": cr}
+    return ycbcr
 
-def image_gradient(image):
-    g_x = ndimage.sobel(image, 0)
-    g_y = ndimage.sobel(image, 1)
+def image_gradient(image, filter):
+    g_x = filter(image, 0)
+    g_y = filter(image, 1)
     g = (g_x**2+g_y**2)**(1/2)
     return g
     
+def merge(R, regions, A, B):
+        regions[A] = regions[A].union(regions[B])
+        for m, n in regions[B]:
+            R[m, n] = A
+        del regions[B]
+
+
+def compute_ycbcr_mean(regions, ycbcr):
+    meanycbcr = {}
+    for r, pixels in regions.items():
+        Ay, Acb, Acr = 0, 0, 0
+        for m, n in pixels:
+            Ay += ycbcr["y"][m, n]
+            Acb += ycbcr["cb"][m, n]
+            Acr += ycbcr["cr"][m, n]
+        Ay = Ay/len(pixels)
+        Acb = Acb/len(pixels)
+        Acr = Acr/len(pixels)
+        meanycbcr[r] = {"y": Ay, "cb": Acb, "cr": Acr}
+    return meanycbcr
+
+        
+def adjacent_regions(R, regions):
+    M, N = R.shape
+    adjacent = {}
+    for r, pixels in regions.items():
+        adj_pixels = set()
+        adj_regions = set()
+        for m, n in pixels:
+            if m-1 >= 0 and R[m-1, n] != R[m, n]:
+                adj_pixels.add((m-1, n))
+                adj_regions.add(R[m-1, n])
+            if m+1 < M and R[m+1, n] != R[m, n]:
+                adj_pixels.add((m+1, n)) 
+                adj_regions.add(R[m+1, n])
+            if n-1 >= 0 and  R[m, n-1] != R[m, n]:
+                adj_pixels.add((m, n-1))
+                adj_regions.add(R[m, n-1])
+            if n+1 < N and R[m, n+1] != R[m, n]:
+                adj_pixels.add((m, n+1))
+                adj_regions.add(R[m, n+1])
+        adjacent[r] = {"adj_pixels": adj_pixels, "adj_regions": adj_regions}
+    return adjacent
+
+def find_border(R, regions):
+    M, N = R.shape
+    regionsBorders = {}
+    for r, pixels in regions.items():
+        borders = {}
+        for m, n in pixels:
+            if m-1 >= 0 and R[m-1, n] != R[m, n]:
+                if R[m-1, n] in borders:
+                    borders[R[m-1, n]].add((m-1, n)) 
+                    borders[R[m-1, n]].add((m, n)) 
+                else:
+                    borders[R[m-1, n]] = set()
+                    borders[R[m-1, n]].add((m-1, n))
+                    borders[R[m-1, n]].add((m, n)) 
+
+            if m+1 < M and R[m+1, n] != R[m, n]:
+                if R[m+1, n] in borders:
+                    borders[R[m+1, n]].add((m+1, n)) 
+                    borders[R[m+1, n]].add((m, n)) 
+                else:
+                    borders[R[m+1, n]] = set()
+                    borders[R[m+1, n]].add((m+1, n))
+                    borders[R[m+1, n]].add((m, n)) 
+            if n-1 >= 0 and  R[m, n-1] != R[m, n]:
+                if R[m, n-1] in borders:
+                    borders[R[m, n-1]].add((m, n-1)) 
+                    borders[R[m, n-1]].add((m, n)) 
+                else:
+                    borders[R[m, n-1]] = set()
+                    borders[R[m, n-1]].add((m, n-1))
+                    borders[R[m, n-1]].add((m, n)) 
+            if n+1 < N and R[m, n+1] != R[m, n]:
+                if R[m, n+1] in borders:
+                    borders[R[m, n+1]].add((m, n+1)) 
+                    borders[R[m, n+1]].add((m, n)) 
+                else:
+                    borders[R[m, n+1]] = set()
+                    borders[R[m, n+1]].add((m, n+1))
+                    borders[R[m, n+1]].add((m, n)) 
+        regionsBorders[r] = borders
+    # print(f"border: {regionsBorders}")
+    return regionsBorders
+
+def mean_1d(a):
+    return sum(a)/len(a)
+
+def mean_2d(pixels):
+    m, n = 0, 0
+    for i, j in pixels:
+        m += i
+        n += j
+    meanPixel = (int(m), int(n))
+    return meanPixel
+        
