@@ -48,7 +48,10 @@ class Watershed:
                         self.regions[max(self.regions)+1] = pixels
                     
     def run(self):
-        g = Tool.image_gradient(self.image, ndimage.sobel)  # Compute gradient
+        sobelgx = ndimage.sobel(self.image, 0)
+        sobelgy = ndimage.sobel(self.image, 1)
+        g = (sobelgx**2+sobelgy**2)**(1/2)
+        # g = Tool.image_gradient(self.image, ndimage.sobel)  # Compute gradient
         L = np.round(g/self.Q)  # Quantize
         plt.imshow(L)
         plt.title("L")

@@ -41,12 +41,6 @@ def RGB_to_ycbcr(image):
     cr = W[2][0]*image[:, :, 0]+W[2][1]*image[:, :, 1]+W[2][2]*image[:, :, 2]
     ycbcr = {"y": y, "cb": cb, "cr": cr}
     return ycbcr
-
-def image_gradient(image, filter):
-    g_x = filter(image, 0)
-    g_y = filter(image, 1)
-    g = (g_x**2+g_y**2)**(1/2)
-    return g
     
 def merge(R, regions, A, B):
         regions[A] = regions[A].union(regions[B])
@@ -135,14 +129,5 @@ def find_border(R, regions):
     # print(f"border: {regionsBorders}")
     return regionsBorders
 
-def mean_1d(a):
-    return sum(a)/len(a)
 
-def mean_2d(pixels):
-    m, n = 0, 0
-    for i, j in pixels:
-        m += i
-        n += j
-    meanPixel = (int(m), int(n))
-    return meanPixel
-        
+    
