@@ -1,58 +1,38 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from Watershed import watershed
-from MultiStage import process_over_segmentation
-import Tool
+import cv2
 import time
+from Watershed import watershed
+from MultiStage import MultiStageMerge
+import Tool
+from config import Filters, Thresholds, L
+from FastSegment_RGB import fast_segmentation
+
 
 def main():
-    # filter setting
-    sobel_x1 = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])/4
-    sobel_y1 = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])/4
-    sobel_x2 = np.array([[-1, -1, 0, 1, 1], [-2, -2, 0, 2, 2], [-1, -1, 0, 1, 1]])/8
-    sobel_y2 = np.array([[-1, -2, -1], [-1, -2, -1], [0, 0, 0], [1, 2, 1], [1, 2, 1]])/8
-    sobel_x3 = np.array([[-1, -1, -1, 0, 1, 1, 1], [-2, -2, -2, 0, 2, 2, 2], [-1, -1, -1, 0, 1, 1, 1]])/12
-    sobel_y3 = np.array([[-1, -2, 1], [-1, -2, 1], [-1, -2, 1], [0, 0, 0], [1, 2, 1], [1, 2, 1], [1, 2, 1]])/12
-    laplace2 = np.array([[-1, -1, -1, -1, -1], [-1, -1, -1, -1, -1], [-1, -1, 24, -1, -1], [-1, -1, -1, -1, -1], [-1, -1, -1, -1, -1]])/24
-    laplace1 = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])/8
+    # ground truth and resize to target
+    path = "Groundtruth_label_image/lena_label.jpeg"
+    groundTruthImage = cv2.imread(path)
+    groundTruthImage = cv2.resize(groundTruthImage, (256, 256))
+    groundTruthImage = cv2.cvtColor(groundTruthImage, cv2.COLOR_BGR2RGB)
+    groundTruthImage = groundTruthImage[128:, :128]
+    plt.figure()
+    plt.imshow(groundTruthImage)
+    plt.title("ground truth image")
+    R, groundTruthRegions = fast_segmentation(groundTruthImage, 25, 50)
+    groundTruthRegions = Tool.convertRegions(groundTruthRegions)
+    print(f"ground truth regions num: {len(groundTruthRegions)}")
+    sortedRegions, r = Tool.sort_region(groundTruthRegions)
+    Tool.show_segamented_image(groundTruthImage, sortedRegions, r[0:16])
 
-    L1 = {
-        "l": 0.8,
-        "l1": 0.6,
-        "l2": 0.4,
-        "l3": 0.4,
-        "lt": 0.4
-    }
-    L2 = {
-        "l": 0.8,
-        "l1": 0.5,
-        "l2": 0.5,
-        "l3": 0.5,
-        "lt": 0.5
-    }
-    L3 = {
-        "l": 0.8,
-        "l1": 0.4,
-        "l2": 0.6,
-        "l3": 0.6,
-        "lt": 0.6
-    }
-    L4 = {
-        "l": 0.8,
-        "l1": 0.3,
-        "l2": 0.7,
-        "l3": 0.7,
-        "lt": 0.7
-    }
-
-    # read image
+    # read target image
     path = "Pic/Lena_256bmp.bmp"
-    # path = "Pic/peppers_s.bmp"
-
     image = plt.imread(path)
     image = image[128:, :128]
     M, N, O = image.shape
-
+    plt.figure()
+    plt.imshow(image)
+    plt.title("target image")
     # convert rgb to ycbcr
     ycbcr = Tool.RGB_to_ycbcr(image)
 
@@ -63,48 +43,27 @@ def main():
     print(f"Watershed time: {end-start}")
     print(f"Watershed regions num: {len(regions)}")
 
-    # convert the results
-    R = Tool.regions_to_R(regions, M, N)
-    regions, r = Tool.sort_region(regions)
+    # # convert the results
+    # R = Tool.regions_to_R(regions, M, N)
+    # regions, r = Tool.sort_region(regions)
 
-    # show results
-    Tool.show_segamented_image(image, regions, r[0:16])
+    # # show results
+    # Tool.show_segamented_image(image, regions, r[0:16])
 
-    
-    # over segmentation processing
+    # multi-stage merge
     start = time.time()
-    R1, regions1 = process_over_segmentation(R.copy(), regions.copy(), ycbcr, L1, 17, 250, sobel_x3, sobel_y3, laplace2)
-    print(f"merge regions num1: {len(regions1)}")
-    regions1, r1 = Tool.sort_region(regions1)
-    Tool.show_segamented_image(image, regions1, r1[0:16])
-    R1, regions1 = process_over_segmentation(R1, regions1, ycbcr, L2, 50, 15, sobel_x2, sobel_y2, laplace2)
-    print(f"merge regions num2: {len(regions1)}")
-    regions1, r1 = Tool.sort_region(regions1)
-    Tool.show_segamented_image(image, regions1, r1[0:16])
-    R1, regions1 = process_over_segmentation(R1, regions1, ycbcr, L3, 100, 65, sobel_x1, sobel_y1, laplace1)
-    print(f"merge regions num3: {len(regions1)}")
-    regions1, r1 = Tool.sort_region(regions1)
-    Tool.show_segamented_image(image, regions1, r1[0:16])
-    R1, regions1 = process_over_segmentation(R1, regions1, ycbcr, L4, 300, 30, sobel_x1, sobel_y1, laplace1)
-    print(f"merge regions num4: {len(regions1)}")
+    regions1 = MultiStageMerge(image, regions.copy(), ycbcr, L, Thresholds, Filters).run()
     end = time.time()
     print(f"merge time: {end-start}")
+    sortedRegions, r = Tool.sort_region(regions1)
+    Tool.show_segamented_image(image, sortedRegions, r[0:16])
 
     # convert the results
     R1 = Tool.regions_to_R(regions1, M, N)
-    regions1, r1 = Tool.sort_region(regions1)
     plt.figure()
     plt.imshow(R1)
 
-    # show results
-    Tool.show_segamented_image(image, regions1, r1[0:16])
-
-    
-
-
-
-    
-
+    print(f"IOU: {Tool.IOU(regions1, groundTruthRegions, 128*128)}")
     plt.show()
     
 if __name__ == "__main__":

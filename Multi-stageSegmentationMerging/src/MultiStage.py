@@ -1,40 +1,30 @@
-from scipy import ndimage
 import Tool
 import matplotlib.pyplot as plt
 
-def process_over_segmentation(R, regions, ycbcr, L, delta, threshold, sxfilter, syfilter, lfilter):
-    def distance1(A, B, L):
-        return (L["l"]*(A["y"]-B["y"])**2+(A["cb"]-B["cb"])**2+(A["cr"]-B["cr"])**2)**(1/2)
-    
-    def distance2(A, B, L, sobelMean, laplaceMean):
-        return (L["l1"]*(A["y"]-B["y"])**2+(A["cb"]-B["cb"])**2+(A["cr"]-B["cr"])**2+L["l2"]*sobelMean+L["l3"]*laplaceMean+L["lt"]*((A["tx"]-B["tx"])**2+(A["ty"]-B["ty"])**2))*(0.5)
-    
-    def border_gradient(border, gradient):
-        g = 0
-        for m, n in border:
-            g += abs(gradient[m, n])
-        g = g/len(border)
-        return g
-    
-    def compute_texture(regions, g, r, a):
-        texture = 0
-        l = len(regions[r])
-        for m, n in regions[r]:
-            texture += abs(g[m, n])
-        texture = (texture/l)**a
-        return texture
 
-    def process_small_regions(R, regions, meanycbcr, delta):
-        adjacent = Tool.adjacent_regions(R, regions)
+class MultiStageMerge:
+    def __init__(self, image, regions, ycbcr, L, Thresholds, Filters):
+        self.image = image
+        self.regions = regions
+        self.ycbcr = ycbcr
+        self.M, self.N = ycbcr["y"].shape
+        self.R = Tool.regions_to_R(regions, self.M, self.N)
+        self.L = L
+        self.Thresholds = Thresholds
+        self.Filters = Filters
+    
+    def process_small_regions(self, L, delta):
+        adjacent = Tool.adjacent_regions(self.R, self.regions)
+        meanycbcr = Tool.compute_ycbcr_mean(self.regions, self.ycbcr)
         regions_to_merge = []
-        for r, pixels in regions.items():
+        for r, pixels in self.regions.items():
             if len(pixels) < delta:
                 A = {"y": meanycbcr[r]["y"], "cb": meanycbcr[r]["cb"], "cr": meanycbcr[r]["cr"]}
                 minDiff = 10000000
                 minAdj = -1
                 for adj in adjacent[r]["adj_regions"]:
                     B = {"y": meanycbcr[adj]["y"], "cb": meanycbcr[adj]["cb"], "cr": meanycbcr[adj]["cr"]}
-                    dist = distance1(A, B, L)
+                    dist = Tool.process_small_regions_distance(A, B, L)
                     if dist < minDiff:
                         minDiff = dist
                         minAdj = adj
@@ -42,76 +32,66 @@ def process_over_segmentation(R, regions, ycbcr, L, delta, threshold, sxfilter, 
                     regions_to_merge.append((r, minAdj))
 
         for r, minAdj in regions_to_merge:
-            if r in regions and minAdj in regions:
+            if r in self.regions and minAdj in self.regions:
                 if r == minAdj:
                     continue
-                Tool.merge(R, regions, r, minAdj)
+                Tool.merge(self.R, self.regions, r, minAdj)
                 for i in range(len(regions_to_merge)):
                     if regions_to_merge[i][0] == minAdj:
                         regions_to_merge[i] = (r, regions_to_merge[i][1])
                     if regions_to_merge[i][1] == minAdj:
                         regions_to_merge[i] = (regions_to_merge[i][0], r)
         
-    def merge_adjacent_regions(R, regions, ycbcr, meanycbcr, threshold, sxfilter, syfilter, lfilter):
-        adjacent = Tool.adjacent_regions(R, regions)
-        border = Tool.find_border(R, regions)
-        sobelgx = Tool.gradient(ycbcr["y"], sxfilter)
-        sobelgy = Tool.gradient(ycbcr["y"], syfilter)
+    def merge_adjacent_regions(self, L, distance, Filter):
+        adjacent = Tool.adjacent_regions(self.R, self.regions)
+        border = Tool.find_border(self.R, self.regions)
+        sobelgx = Tool.gradient(self.ycbcr["y"], Filter["sobelx"])
+        sobelgy = Tool.gradient(self.ycbcr["y"], Filter["sobely"])
         sobelg = (sobelgx**2+sobelgy**2)*(0.5)
-        laplaceg = Tool.gradient(ycbcr["y"], lfilter)
+        laplaceg = Tool.gradient(self.ycbcr["y"], Filter["laplace"])
+        meanycbcr = Tool.compute_ycbcr_mean(self.regions, self.ycbcr)
         regions_to_merge = []
-        
-        arearecord = []
-        textrecordx = []
-        textrecordy = []
-        distrecord = []
 
-        for r, pixels in regions.items():
-            A = {"y": meanycbcr[r]["y"], "cb": meanycbcr[r]["cb"], "cr": meanycbcr[r]["cr"], "tx": compute_texture(regions, sobelgx, r, 0.5), "ty": compute_texture(regions, sobelgy, r, 0.5)} 
-            t = threshold
+        distRecord = []
+
+        for r, pixels in self.regions.items():
+            A = {"y": meanycbcr[r]["y"], "cb": meanycbcr[r]["cb"], "cr": meanycbcr[r]["cr"], "tx": Tool.compute_texture(self.regions, sobelgx, r, 0.5), "ty": Tool.compute_texture(self.regions, sobelgy, r, 0.5)} 
+            t = distance
             for adj in adjacent[r]["adj_regions"]:
-                B = {"y": meanycbcr[adj]["y"], "cb": meanycbcr[adj]["cb"], "cr": meanycbcr[adj]["cr"], "tx": compute_texture(regions, sobelgx, adj, 0.5), "ty": compute_texture(regions, sobelgy, adj, 0.5)} 
-                arearecord.append(min(len(regions[r]), len(regions[r])))
-                textrecordx.append(min(A["tx"], B["tx"]))
-                textrecordy.append(min(A["ty"], B["ty"]))
-                # if min(len(regions[r]), len(regions[r])) > 300 or min(A["tx"], B["tx"]) > 8 or min(A["ty"], B["ty"]) > 8:
-                #     t = 1.5*t
-                meanSobel = border_gradient(border[r][adj], sobelg)
-                meanLaplace = border_gradient(border[r][adj], laplaceg)
-                dist = distance2(A, B, L, meanSobel, meanLaplace)
-                distrecord.append(dist)
+                B = {"y": meanycbcr[adj]["y"], "cb": meanycbcr[adj]["cb"], "cr": meanycbcr[adj]["cr"], "tx": Tool.compute_texture(self.regions, sobelgx, adj, 0.5), "ty": Tool.compute_texture(self.regions, sobelgy, adj, 0.5)} 
+                meanSobel = Tool.border_gradient(border[r][adj], sobelg)
+                meanLaplace = Tool.border_gradient(border[r][adj], laplaceg)
+                dist = Tool.merge_adjacent_regions_distance(A, B, L, meanSobel, meanLaplace)
+                distRecord.append(dist)
                 if dist < t:
                     regions_to_merge.append((r, adj))
         # plt.figure()
-        # plt.plot(arearecord)
-        # plt.title("record area")
-        # plt.figure()
-        # plt.plot(textrecordx)
-        # plt.title("recordx")
-        # plt.figure()
-        # plt.plot(textrecordy)
-        # plt.title("recordy")
-        # plt.figure()
-        # plt.plot(distrecord)
-        # plt.title("recorddist")
-        # plt.figure()
-
+        # plt.plot(distRecord)
 
         for r, adj in regions_to_merge:
-            if r in regions and adj in regions:
+            if r in self.regions and adj in self.regions:
                 if r == adj:
                     continue
-                Tool.merge(R, regions, r, adj)
+                Tool.merge(self.R, self.regions, r, adj)
                 for i in range(len(regions_to_merge)):
                     if regions_to_merge[i][0] == adj:
                         regions_to_merge[i] = (r, regions_to_merge[i][1])
                     if regions_to_merge[i][1] == adj:
                         regions_to_merge[i] = (regions_to_merge[i][0], r)
 
-    meanycbcr = Tool.compute_ycbcr_mean(regions, ycbcr)
-    for _ in range(10):
-        process_small_regions(R, regions, meanycbcr, delta)
-        meanycbcr = Tool.compute_ycbcr_mean(regions, ycbcr)
-    merge_adjacent_regions(R, regions, ycbcr, meanycbcr, threshold, sxfilter, syfilter, lfilter)
+    def stage(self, L, Threshold, Filter):
+        for _ in range(10):
+            self.process_small_regions(L, Threshold["delta"])
+        for _ in range(10):
+            self.merge_adjacent_regions(L, Threshold["distance"], Filter)
+        
 
-    return R, regions   
+    def run(self):
+        for i in range(1, len(self.L)+1):
+            self.stage(self.L[i], self.Thresholds[i], self.Filters[i])
+            print(f"merge regions num1: {len(self.regions)}")
+            # sortedRegions, r = Tool.sort_region(self.regions)
+            # Tool.show_segamented_image(self.image, sortedRegions, r[0:16])
+        return self.regions
+        
+        

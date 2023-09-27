@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 
-
 def regions_to_R(regions, M, N):
     R = np.zeros((M, N), dtype=int)
     for r, points in regions.items():
@@ -100,52 +99,81 @@ def find_border(R, regions):
             if m-1 >= 0 and R[m-1, n] != R[m, n]:
                 if R[m-1, n] in borders:
                     borders[R[m-1, n]].add((m-1, n)) 
-                    #borders[R[m-1, n]].add((m, n)) 
+                    borders[R[m-1, n]].add((m, n)) 
                 else:
                     borders[R[m-1, n]] = set()
                     borders[R[m-1, n]].add((m-1, n))
-                    #borders[R[m-1, n]].add((m, n)) 
+                    borders[R[m-1, n]].add((m, n)) 
 
             if m+1 < M and R[m+1, n] != R[m, n]:
                 if R[m+1, n] in borders:
                     borders[R[m+1, n]].add((m+1, n)) 
-                    #borders[R[m+1, n]].add((m, n)) 
+                    borders[R[m+1, n]].add((m, n)) 
                 else:
                     borders[R[m+1, n]] = set()
                     borders[R[m+1, n]].add((m+1, n))
-                    #borders[R[m+1, n]].add((m, n)) 
+                    borders[R[m+1, n]].add((m, n)) 
             if n-1 >= 0 and  R[m, n-1] != R[m, n]:
                 if R[m, n-1] in borders:
                     borders[R[m, n-1]].add((m, n-1)) 
-                    #borders[R[m, n-1]].add((m, n)) 
+                    borders[R[m, n-1]].add((m, n)) 
                 else:
                     borders[R[m, n-1]] = set()
                     borders[R[m, n-1]].add((m, n-1))
-                    #borders[R[m, n-1]].add((m, n)) 
+                    borders[R[m, n-1]].add((m, n)) 
             if n+1 < N and R[m, n+1] != R[m, n]:
                 if R[m, n+1] in borders:
                     borders[R[m, n+1]].add((m, n+1)) 
-                    #borders[R[m, n+1]].add((m, n)) 
+                    borders[R[m, n+1]].add((m, n)) 
                 else:
                     borders[R[m, n+1]] = set()
                     borders[R[m, n+1]].add((m, n+1))
-                    #borders[R[m, n+1]].add((m, n)) 
+                    borders[R[m, n+1]].add((m, n)) 
         regionsBorders[r] = borders
     return regionsBorders
 
-# def merge_regions(regions1, regions2, regions3, regions4):
-#     merged_regions = {}
-#     i = 1
-#     for r, pixels in regions1.items():
-#         merge_regions[i] = pixels
-#         i += 1
-#     for r, pixels in regions2.items():
-#         merge_regions[i] = pixels
-#         i += 1
-#     for r, pixels in regions3.items():
-#         merge_regions[i] = pixels
-#         i += 1
-#     for r, pixels in regions4.items():
-#         merge_regions[i] = pixels
-#         i += 1
-#     return merge_regions
+def filter(sigma, L):
+    x = np.arange(-L, L+1)
+    C = 1/sum(np.exp(1)**(-sigma*x))
+    y = C*np.sign(x)*np.exp(1)**(-sigma*x)
+    filter = np.array([y, y, y])
+    return filter
+
+def process_small_regions_distance(A, B, L):
+    return (L["l"]*(A["y"]-B["y"])**2+(A["cb"]-B["cb"])**2+(A["cr"]-B["cr"])**2)**(1/2)
+
+def merge_adjacent_regions_distance(A, B, L, sobelMean, laplaceMean):
+    return (L["l1"]*(A["y"]-B["y"])**2+(A["cb"]-B["cb"])**2+(A["cr"]-B["cr"])**2+L["l2"]*sobelMean+L["l3"]*laplaceMean+L["lt"]*((A["tx"]-B["tx"])**2+(A["ty"]-B["ty"])**2))*(0.5)
+
+def border_gradient(border, gradient):
+    g = 0
+    for m, n in border:
+        g += abs(gradient[m, n])
+    g = g/len(border)
+    return g
+
+def compute_texture(regions, g, r, a):
+    texture = 0
+    l = len(regions[r])
+    for m, n in regions[r]:
+        texture += abs(g[m, n])
+    texture = (texture/l)**a
+    return texture
+
+def convertRegions(regions):
+    convertedRegions = {}
+    for r, infos in regions.items():
+        convertedRegions[r] = set(infos["B"])
+    return convertedRegions
+
+
+def IOU(results, groundTruth, size):
+    iou = 0
+    for m, Am in groundTruth.items():
+        max = 0
+        for n, Bn in results.items():
+            if len(Am.intersection(Bn)) > max:
+                max = len(Am.intersection(Bn))
+        iou += max
+    iou /= size
+    return iou

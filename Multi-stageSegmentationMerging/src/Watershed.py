@@ -1,9 +1,8 @@
-import matplotlib.pyplot as plt
-import Tool
 from skimage import measure
 from scipy import ndimage
 import numpy as np
 from tqdm import tqdm, trange
+import matplotlib.pyplot as plt
 
 # Watershed 
 class watershed:
@@ -52,8 +51,6 @@ class watershed:
         sobelgy = ndimage.sobel(self.image, 1)
         g = (sobelgx**2+sobelgy**2)**(1/2)
         L = np.round(g/self.Q)  # Quantize
-        # plt.imshow(L)
-        # plt.title("L")
 
         self.level = 0
         temp = measure.label(L==self.level)
