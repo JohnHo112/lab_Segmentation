@@ -43,16 +43,6 @@ def RGB_to_ycbcr(image):
     ycbcr = {"y": y, "cb": cb, "cr": cr}
     return ycbcr
 
-def gradient(image, filter):
-    return cv2.filter2D(image, -1, filter)
-
-def merge(R, regions, A, B):
-        regions[A] = regions[A].union(regions[B])
-        for m, n in regions[B]:
-            R[m, n] = A
-        del regions[B]
-
-
 def compute_ycbcr_mean(regions, ycbcr):
     meanycbcr = {}
     for r, pixels in regions.items():
@@ -66,6 +56,45 @@ def compute_ycbcr_mean(regions, ycbcr):
         Acr = Acr/len(pixels)
         meanycbcr[r] = {"y": Ay, "cb": Acb, "cr": Acr}
     return meanycbcr
+
+def compute_RGB_mean(regions, RGB):
+    # print(RGB.shape)
+    meanRGB = {}
+    for r, pixels in regions.items():
+        AR, AG, AB = 0, 0, 0
+        for m, n in pixels:
+            AR += RGB[m, n, 0]
+            AG += RGB[m, n, 1]
+            AB += RGB[m, n, 2]
+        AR = AR/len(pixels)
+        AG = AG/len(pixels)
+        AB = AB/len(pixels)
+        meanRGB[r] = {"R": AR, "G": AG, "B": AB}
+    return meanRGB
+
+def merge_regions(regions_to_merge, R, regions):
+    for r, minAdj in regions_to_merge:
+        if r in regions and minAdj in regions:
+            if r == minAdj:
+                continue
+            merge(R, regions, r, minAdj)
+            for i in range(len(regions_to_merge)):
+                if regions_to_merge[i][0] == minAdj:
+                    regions_to_merge[i] = (r, regions_to_merge[i][1])
+                if regions_to_merge[i][1] == minAdj:
+                    regions_to_merge[i] = (regions_to_merge[i][0], r)
+
+
+
+def merge(R, regions, A, B):
+        regions[A] = regions[A].union(regions[B])
+        for m, n in regions[B]:
+            R[m, n] = A
+        del regions[B]
+
+
+
+    
 
         
 def adjacent_regions(R, regions):
@@ -132,6 +161,9 @@ def find_border(R, regions):
         regionsBorders[r] = borders
     return regionsBorders
 
+def gradient(image, filter):
+    return cv2.filter2D(image, -1, filter)
+
 def filter(sigma, L):
     x = np.arange(-L, L+1)
     C = 1/sum(np.exp(1)**(-sigma*x))
@@ -139,16 +171,25 @@ def filter(sigma, L):
     filter = np.array([y, y, y])
     return filter
 
+def color_distance(A, B):
+    return ((A["R"]-B["R"])**2+(A["G"]-B["G"])**2+(A["B"]-B["B"])**2)**(1/2)
+
 def process_small_regions_distance(A, B, L):
     return (L["l"]*(A["y"]-B["y"])**2+(A["cb"]-B["cb"])**2+(A["cr"]-B["cr"])**2)**(1/2)
 
-def merge_adjacent_regions_distance(A, B, L, sobelMean, laplaceMean):
-    return (L["l1"]*(A["y"]-B["y"])**2+(A["cb"]-B["cb"])**2+(A["cr"]-B["cr"])**2+L["l2"]*sobelMean+L["l3"]*laplaceMean+L["lt"]*((A["tx"]-B["tx"])**2+(A["ty"]-B["ty"])**2))*(0.5)
+def merge_adjacent_regions_distance(A, B, L, sobelMeanx, sobelMeany, laplaceMean):
+    # print(A, B, L, sobelMeanx, sobelMeany, laplaceMean)
+    return (L["l1"]*(A["y"]-B["y"])**2+(A["cb"]-B["cb"])**2+(A["cr"]-B["cr"])**2+L["l2"]*(sobelMeanx+sobelMeany)+L["l3"]*laplaceMean+L["lt"]*((A["tx"]-B["tx"])**2+(A["ty"]-B["ty"])**2))*(0.5)
 
-def border_gradient(border, gradient):
+def border_gradient(border, gradient, a):
     g = 0
-    for m, n in border:
-        g += abs(gradient[m, n])
+    if a == True:
+        for m, n in border:
+            g += abs(gradient[m, n])
+    else:
+        for m, n in border:
+            g += gradient[m, n]
+
     g = g/len(border)
     return g
 
@@ -166,14 +207,24 @@ def convertRegions(regions):
         convertedRegions[r] = set(infos["B"])
     return convertedRegions
 
+def min_pixels(regions):
+    min = 10000000
+    for pixels in regions.values():
+        if len(pixels) < min:
+            min = len(pixels)
+    print(f"min: {min}")
+    
 
 def IOU(results, groundTruth, size):
     iou = 0
-    for m, Am in groundTruth.items():
+    for A in groundTruth.values():
+        ALen = len(A)
+        w = ALen/size
         max = 0
-        for n, Bn in results.items():
-            if len(Am.intersection(Bn)) > max:
-                max = len(Am.intersection(Bn))
-        iou += max
-    iou /= size
+        for B in results.values():
+            temp = (len(A.intersection(B)))/(len(A.union(B)))
+            if temp > max:
+                max = temp
+        iou += w*max
+
     return iou

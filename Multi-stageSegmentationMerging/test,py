@@ -1,0 +1,50 @@
+import cv2
+import numpy as np
+import random
+
+def random_color():
+    # 生成一个随机颜色
+    return tuple([int(random.randint(0, 255)) for _ in range(3)])
+
+def watershed_segmentation(image_path):
+    # 读取图像
+    image = cv2.imread(image_path)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    
+    # 膨胀操作
+    kernel = np.ones((3, 3), np.uint8)
+    sure_bg = cv2.dilate(thresh, kernel, iterations=3)
+    
+    # 距离变换
+    dist_transform = cv2.distanceTransform(thresh, cv2.DIST_L2, 5)
+    ret, sure_fg = cv2.threshold(dist_transform, 0.7 * dist_transform.max(), 255, 0)
+    
+    # 找到未知区域
+    sure_fg = np.uint8(sure_fg)
+    unknown = cv2.subtract(sure_bg, sure_fg)
+    
+    # 标记标签
+    ret, markers = cv2.connectedComponents(sure_fg)
+    markers = markers + 1
+    markers[unknown == 255] = 0
+    
+    # 应用分水岭算法
+    markers = cv2.watershed(image, markers)
+    
+    # 为不同区域分配随机颜色
+    unique_markers = np.unique(markers)
+    for marker in unique_markers:
+        if marker == -1:
+            continue
+        color = random_color()
+        image[markers == marker] = color
+    
+    # 显示图像
+    cv2.imshow('Segmented Image', image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+# 调用函数并传入图像文件路径
+image_path = "Pic/Lena_256bmp.bmp"
+watershed_segmentation(image_path)
