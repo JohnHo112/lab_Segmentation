@@ -92,11 +92,6 @@ def merge(R, regions, A, B):
             R[m, n] = A
         del regions[B]
 
-
-
-    
-
-        
 def adjacent_regions(R, regions):
     M, N = R.shape
     adjacent = {}
@@ -177,9 +172,9 @@ def color_distance(A, B):
 def process_small_regions_distance(A, B, L):
     return (L["l"]*(A["y"]-B["y"])**2+(A["cb"]-B["cb"])**2+(A["cr"]-B["cr"])**2)**(1/2)
 
-def merge_adjacent_regions_distance(A, B, L, sobelMeanx, sobelMeany, laplaceMean):
+def merge_adjacent_regions_distance(A, B, L, sobelMean, laplaceMean):
     # print(A, B, L, sobelMeanx, sobelMeany, laplaceMean)
-    return (L["l1"]*(A["y"]-B["y"])**2+(A["cb"]-B["cb"])**2+(A["cr"]-B["cr"])**2+L["l2"]*(sobelMeanx+sobelMeany)+L["l3"]*laplaceMean+L["lt"]*((A["tx"]-B["tx"])**2+(A["ty"]-B["ty"])**2))*(0.5)
+    return (L["l1"]*(A["y"]-B["y"])**2+(A["cb"]-B["cb"])**2+(A["cr"]-B["cr"])**2+L["l2"]*(sobelMean)+L["l3"]*laplaceMean+L["lt"]*((A["tx"]-B["tx"])**2+(A["ty"]-B["ty"])**2))*(0.5)
 
 def border_gradient(border, gradient, a):
     g = 0
@@ -213,6 +208,30 @@ def min_pixels(regions):
         if len(pixels) < min:
             min = len(pixels)
     print(f"min: {min}")
+
+def final_merge(R, regions, g, meanycbcr, threshold1,  threshold2):
+    adjacent = adjacent_regions(R, regions)
+    regions_to_merge = []
+    record1 = []
+    record2 = []
+    for r in regions:
+        for adj in adjacent[r]["adj_regions"]:
+            at = compute_texture(regions, g, r, 0.5)
+            bt = compute_texture(regions, g, adj, 0.5)
+            record1.append(abs(meanycbcr[r]["y"] - meanycbcr[adj]["y"]))
+            record2.append(abs(at-bt))
+            dist1 = ((meanycbcr[r]["y"] - meanycbcr[adj]["y"])**2+(meanycbcr[r]["cb"] - meanycbcr[adj]["cb"])**2+(meanycbcr[r]["cr"] - meanycbcr[adj]["cr"])**2)**(0.5)
+            dist2 = abs(at-bt)
+            if  dist1 < threshold1 and dist2 < threshold2:
+                regions_to_merge.append((r, adj))
+    plt.figure()
+    plt.plot(record1)
+    plt.figure()
+    plt.plot(record2)
+    
+    merge_regions(regions_to_merge, R, regions)
+
+        
     
 
 def IOU(results, groundTruth, size):

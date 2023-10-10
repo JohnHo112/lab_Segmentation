@@ -65,6 +65,9 @@ class watershed:
         sobelgx = ndimage.sobel(self.image, 0)
         sobelgy = ndimage.sobel(self.image, 1)
         g = (sobelgx**2+sobelgy**2)**(1/2)
+        plt.figure()
+        plt.imshow(g)
+
         L = np.round(g/self.Q)  # Quantize
 
         self.regions = measure.label(L==self.level)

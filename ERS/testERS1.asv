@@ -1,0 +1,21 @@
+path='C:\Users\MD531\Documents\Depth\Lightfield1\';
+img = double(imread([path,'Max_PCB_AE_blue_auto.bmp'])); 
+img1=img(28:138,39:149,:);
+img2=img1;
+
+figure(2)
+subplot(121)
+image(img1/255)
+colormap(gray(256))
+return
+
+imgPath = strcat(name, '.jpg');
+oriImg = imread(imgPath);
+grey_img = double(rgb2gray(oriImg));
+[h,w]=size(grey_img);
+nC = floor(w*h/200);
+
+segments = mex_ers(grey_img,nC);
+edge=(segments~=segments(:,[1,1:w-1])) | (segments~=segments([1,1:h-1],:));
+image(edge*255+grey_img*0.7)
+colormap(gray(256))
